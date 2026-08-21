@@ -1,0 +1,16 @@
+Source: lingmo-protocols
+Section: admin
+Priority: optional
+Maintainer: Lingmo OS Team <team@lingmo.org>
+Build-Depends:
+  debhelper-compat (=13),
+  cargo,
+  just,
+Standards-Version: 4.6.2
+Homepage: https://github.com/Matrinsoft/lingmo-protocols
+
+Package: lingmo-protocols
+Architecture: all
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: COSMIC Wayland protocol extensions
+ Generated API for the COSMIC wayland protocol extensions
