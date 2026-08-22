@@ -1,4 +1,5 @@
-name: Upload to OBS
+name: Build and Release
+
 permissions: write-all
 
 on:
@@ -8,43 +9,42 @@ on:
       - "v*.*.*"
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  debian:
-    name: Debian Testing
+  build:
+    name: Build
     runs-on: ubuntu-latest
     container: docker.io/library/debian:testing
     steps:
       - name: Install Dependencies
         run: |
           apt-get update
-          apt-get install -y sudo git ca-certificates curl
-          apt-get install -y equivs git devscripts debhelper lintian build-essential automake autotools-dev cmake g++ just
-          curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          apt-get install -y sudo git ca-certificates curl dpkg-dev make
 
       - name: Checkout Source
         uses: actions/checkout@v4
 
-      - name: Fix permissions
-        run: chmod +x debian/rules
-
-      - name: Build source package
+      - name: Build .deb
         run: |
-          CLEAN=0 VENDOR=0 dpkg-buildpackage -S -us -uc -d
+          VERSION=$(date -u +%y%m%d)
+          PKG_DIR="lingmo-protocols-${VERSION}"
+          mkdir -p "${PKG_DIR}/DEBIAN"
+          mkdir -p "${PKG_DIR}/usr/share/cosmic-protocols/unstable"
+          mkdir -p "${PKG_DIR}/usr/share/pkgconfig"
+          printf 'Package: lingmo-protocols\nVersion: %s\nArchitecture: all\nMaintainer: Lingmo OS Team <team@lingmo.org>\nDescription: Lingmo Wayland protocols\nSection: devel\nPriority: optional\n' "$VERSION" > "${PKG_DIR}/DEBIAN/control"
+          make PREFIX=/usr DESTDIR="$(pwd)/${PKG_DIR}" install
+          dpkg-deb --build "${PKG_DIR}"
+          mkdir -p dist
+          mv "${PKG_DIR}.deb" dist/
 
-      - name: Collect files
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p src-tar-output
-          mv ../*.dsc ../*.tar.* src-tar-output/
-
-      - name: Upload
-        uses: LingmoOS/action-upload-to-obs@0.0.4
-        with:
-          remove-old-sources: true
-          obs-package-name: 'lingmo-protocols'
-          obs-project-name: 'home:LingmoOS:Lithium'
-          obs-user-name: ${{ secrets.OBS_USERNAME }}
-          obs-password: ${{ secrets.OBS_TOKEN }}
-          obs-instance-url: 'https://api.opensuse.org'
-          local-package-dir: './src-tar-output'
+          TAG="build+$(date -u +%y%m%d+%H%M)"
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" dist/*.deb \
+            --title "$TAG" \
+            --generate-notes
